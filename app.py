@@ -11,7 +11,7 @@ from ultralytics import YOLO
 # MODEL PATHS
 # ==============================================================
 CLASSIFICATION_MODEL_PATH = "clinicscan_classifier_15class.pth"
-DETECTION_MODEL_PATH = "runs/detect/train54/weights/best.pt"
+DETECTION_MODEL_PATH = "runs/detect/train38/weights/best.pt"
 
 # ==============================================================
 # LOAD RESNET50 CLASSIFIER (15 CLASSES)
