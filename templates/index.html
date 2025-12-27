@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>CliniScan – Chest X-ray Analysis</title>
+</head>
+<body>
+
+<h1>CliniScan – Chest X-ray Analysis</h1>
+
+<form method="POST" enctype="multipart/form-data">
+    <input type="file" name="image" required>
+    <button type="submit">Analyze</button>
+</form>
+
+{% if classification %}
+<hr>
+<h2>Classification Result:</h2>
+<p><b>{{ classification }}</b></p>
+
+<h2>YOLO Detections:</h2>
+<ul>
+{% for d, c in detections %}
+    <li>{{ d }} – {{ c }}</li>
+{% endfor %}
+</ul>
+
+<h2>Disease Information:</h2>
+{% for d, desc in definitions.items() %}
+    <p><b>{{ d }}</b>: {{ desc }}</p>
+{% endfor %}
+
+<h2>Annotated X-ray:</h2>
+<img src="{{ image_path }}" width="600">
+{% endif %}
+
+</body>
+</html>
