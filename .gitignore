@@ -1,0 +1,12 @@
+# Virtual environments
+cliniscan_env/
+venv/
+env/
+
+# Python cache
+__pycache__/
+.ipynb_checkpoints/
+*.pyc
+
+# OS files
+.DS_Store
