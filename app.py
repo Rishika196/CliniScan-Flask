@@ -1,7 +1,12 @@
 # =========================
-# IMPORTS
+# ENV SAFETY (CPU ONLY)
 # =========================
 import os
+os.environ["CUDA_VISIBLE_DEVICES"] = ""
+
+# =========================
+# IMPORTS
+# =========================
 import gdown
 import torch
 import torch.nn as nn
@@ -13,7 +18,7 @@ from torchvision import models, transforms
 from ultralytics import YOLO
 
 # =========================
-# PATHS (RELATIVE — CLOUD SAFE)
+# BASE PATHS (CLOUD SAFE)
 # =========================
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 MODEL_DIR = os.path.join(BASE_DIR, "models")
@@ -33,19 +38,19 @@ CLASSIFIER_ID = "1SOaEcC9q29PL2ocrBLAg8QkMdxw-QjV2"
 YOLO_ID = "1xzYVtQKGBvle7PPi4-XgwErhe7kSOiAm"
 
 # =========================
-# DOWNLOAD MODELS (RUNS ON STARTUP)
+# MODEL DOWNLOAD (ON START)
 # =========================
 def download_models():
     if not os.path.exists(CLASSIFIER_PATH):
         gdown.download(
-            f"https://drive.google.com/uc?id={CLASSIFIER_ID}",
+            f"https://drive.google.com/file/d/1SOaEcC9q29PL2ocrBLAg8QkMdxw-QjV2/view?usp=drive_link",
             CLASSIFIER_PATH,
             quiet=False
         )
 
     if not os.path.exists(YOLO_PATH):
         gdown.download(
-            f"https://drive.google.com/uc?id={YOLO_ID}",
+            f"https://drive.google.com/file/d/1xzYVtQKGBvle7PPi4-XgwErhe7kSOiAm/view?usp=drive_link",
             YOLO_PATH,
             quiet=False
         )
@@ -58,16 +63,8 @@ download_models()
 app = Flask(__name__)
 
 # =========================
-# LABELS & DEFINITIONS
+# DISEASE DEFINITIONS
 # =========================
-CLASS_NAMES = [
-    "Aortic enlargement", "Atelectasis", "Calcification", "Cardiomegaly",
-    "Consolidation", "ILD", "Infiltration", "Lung opacity",
-    "Nodule", "Other lesion", "Pleural effusion",
-    "Pleural thickening", "Pneumothorax",
-    "Pulmonary fibrosis", "No finding"
-]
-
 DISEASE_DEFINITIONS = {
     "Aortic enlargement": "Enlargement of the aorta.",
     "Atelectasis": "Collapsed lung tissue.",
@@ -87,8 +84,11 @@ DISEASE_DEFINITIONS = {
 }
 
 # =========================
-# LOAD MODELS (AFTER DOWNLOAD)
+# LAZY MODEL LOADING (CRITICAL)
 # =========================
+classifier = None
+yolo_model = None
+
 @torch.no_grad()
 def load_classifier():
     model = models.resnet50(weights=None)
@@ -97,16 +97,16 @@ def load_classifier():
     model.eval()
     return model
 
-classifier = load_classifier()
-yolo_model = YOLO(YOLO_PATH)
+def get_models():
+    global classifier, yolo_model
 
-# =========================
-# PREPROCESS
-# =========================
-transform = transforms.Compose([
-    transforms.Resize((224, 224)),
-    transforms.ToTensor()
-])
+    if classifier is None:
+        classifier = load_classifier()
+
+    if yolo_model is None:
+        yolo_model = YOLO(YOLO_PATH)
+
+    return classifier, yolo_model
 
 # =========================
 # ROUTES
@@ -114,21 +114,27 @@ transform = transforms.Compose([
 @app.route("/", methods=["GET", "POST"])
 def index():
     if request.method == "POST":
-        image = Image.open(request.files["image"]).convert("RGB")
+        _, yolo = get_models()
 
-        # -------- YOLO Detection ONLY (classification hidden) --------
+        image = Image.open(request.files["image"]).convert("RGB")
         img_cv = cv2.cvtColor(np.array(image), cv2.COLOR_RGB2BGR)
 
-        results = yolo_model(img_cv, conf=0.5, iou=0.4, max_det=5)[0]
+        results = yolo(
+            img_cv,
+            conf=0.5,
+            iou=0.4,
+            max_det=5,
+            device="cpu"
+        )[0]
 
         best_boxes = {}
         detections = []
 
-        if results.boxes:
+        if results.boxes is not None:
             for box in results.boxes:
                 cls_id = int(box.cls[0])
                 conf = float(box.conf[0])
-                name = yolo_model.names[cls_id]
+                name = yolo.names[cls_id]
 
                 if name not in best_boxes or conf > best_boxes[name]["conf"]:
                     best_boxes[name] = {
@@ -142,9 +148,13 @@ def index():
 
             cv2.rectangle(img_cv, (x1, y1), (x2, y2), (0, 0, 255), 2)
             cv2.putText(
-                img_cv, f"{disease} {conf}",
+                img_cv,
+                f"{disease} {conf}",
                 (x1, y1 - 10),
-                cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 255), 2
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.6,
+                (0, 0, 255),
+                2
             )
 
             detections.append((disease, conf))
@@ -164,3 +174,9 @@ def index():
         )
 
     return render_template("index.html")
+
+# =========================
+# ENTRY POINT (RENDER)
+# =========================
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=10000, debug=False)
